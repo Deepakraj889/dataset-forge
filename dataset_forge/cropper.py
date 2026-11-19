@@ -5,37 +5,31 @@ import numpy as np
 from PIL import Image
 from .models import ResolutionBucket
 
-# Load standard OpenCV Haar face cascade
-CASCADE_PATH = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-_face_cascade = None
-
-def get_face_cascade():
-    global _face_cascade
-    if _face_cascade is None:
-        _face_cascade = cv2.CascadeClassifier(CASCADE_PATH)
-    return _face_cascade
-
 def find_subject_focus_point(img_cv: np.ndarray) -> Tuple[float, float]:
     """
     Finds normalized (x, y) center of interest (0.0 to 1.0).
     If a face is detected, focuses slightly above face center (for head/hair balance).
     Otherwise defaults to image optical center (0.5, 0.45).
     """
-    cascade = get_face_cascade()
-    gray = cv2.cvtColor(img_cv, cv2.COLOR_BGR2GRAY)
-    faces = cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
+    try:
+        if hasattr(cv2, "data") and hasattr(cv2, "CascadeClassifier"):
+            cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+            cascade = cv2.CascadeClassifier(cascade_path)
+            gray = cv2.cvtColor(img_cv, cv2.COLOR_BGR2GRAY)
+            faces = cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
 
-    h, w = img_cv.shape[:2]
-    if len(faces) > 0:
-        # Pick largest face
-        faces = sorted(faces, key=lambda f: f[2] * f[3], reverse=True)
-        fx, fy, fw, fh = faces[0]
-        # Focus on upper third of face to preserve full head/hair
-        center_x = (fx + fw / 2.0) / w
-        center_y = (fy + fh * 0.4) / h
-        return center_x, center_y
+            h, w = img_cv.shape[:2]
+            if len(faces) > 0:
+                faces = sorted(faces, key=lambda f: f[2] * f[3], reverse=True)
+                fx, fy, fw, fh = faces[0]
+                center_x = (fx + fw / 2.0) / w
+                center_y = (fy + fh * 0.4) / h
+                return center_x, center_y
+    except Exception:
+        pass
 
-    return 0.5, 0.5
+    return 0.5, 0.45
+
 
 def smart_crop_and_resize(
     image_path: Path,
@@ -102,3 +96,20 @@ def smart_crop_and_resize(
         return True
     except Exception:
         return False
+
+def crop_worker(args: tuple) -> bool:
+    """Multiprocessing worker function for parallel smart cropping."""
+    image_path, bucket, output_path, face_detect = args
+    success = smart_crop_and_resize(
+        image_path=image_path,
+        target_bucket=bucket,
+        output_path=output_path,
+        use_face_detection=face_detect
+    )
+    if success:
+        txt_pair = image_path.with_suffix(".txt")
+        if txt_pair.exists():
+            out_txt = output_path.with_suffix(".txt")
+            out_txt.write_text(txt_pair.read_text(encoding="utf-8"), encoding="utf-8")
+    return success
+

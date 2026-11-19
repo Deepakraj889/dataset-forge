@@ -4,21 +4,25 @@ import typer
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
+from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from .models import ModelDialect
-from .profiles import get_profile, ILLUSTRIOUS_SDXL_BUCKETS
-from .analyzer import analyze_dataset
+from .profiles import get_profile
+from .analyzer import analyze_dataset, IMAGE_EXTENSIONS
 from .deduper import find_duplicates
-from .cropper import smart_crop_and_resize
-from .bucketer import find_best_bucket
-from .tagger import process_tags, parse_caption_text, normalize_danbooru_tag
-from .exporter import export_kohya_structure, export_metadata_jsonl
+from .tagger import process_tags, parse_caption_text
+from .pipeline import (
+    clean_watermarks_pipeline,
+    crop_pipeline,
+    autotag_pipeline,
+    prepare_pipeline,
+)
 
 app = typer.Typer(
     name="dataset-forge",
     help="⚡ DatasetForge: High-performance dataset curation, smart bucketing & tag engineering for SDXL & Illustrious.",
-    add_completion=False
+    add_completion=False,
+    invoke_without_command=True
 )
 console = Console()
 
@@ -30,6 +34,19 @@ BANNER = r"""[bold cyan]
                                             |___/     
 [/bold cyan][dim]Dataset Curation & Tag Engineering for Illustrious (SDXL)[/dim]
 """
+
+@app.callback(invoke_without_command=True)
+def main(ctx: typer.Context):
+    """Launch interactive shell by default if no subcommand is passed."""
+    if ctx.invoked_subcommand is None:
+        from .repl import run_interactive_shell
+        run_interactive_shell()
+
+@app.command(name="shell")
+def shell_cmd():
+    """Launch the interactive DatasetForge shell."""
+    from .repl import run_interactive_shell
+    run_interactive_shell()
 
 @app.command()
 def analyze(
@@ -66,7 +83,7 @@ def analyze(
     blurry_count = 0
     bucket_counts = {}
 
-    for r in reports[:25]: # Show first 25
+    for r in reports[:25]:
         status = "[green]Pass[/green]"
         if r.is_blurry:
             status = "[bold red]Blurry[/bold red]"
@@ -92,7 +109,6 @@ def analyze(
     if len(reports) > 25:
         console.print(f"[dim]... and {len(reports) - 25} more images.[/dim]")
 
-    # Print summary panel
     console.print(Panel(
         f"[bold]Total Images:[/bold] {len(reports)}\n"
         f"[bold]Flagged Blurry (< {profile.blur_threshold:.1f}):[/bold] {blurry_count}\n"
@@ -109,9 +125,8 @@ def dedupe(
 ):
     """Scan and detect duplicate or near-duplicate images using perceptual hashing."""
     console.print(BANNER)
-    from .analyzer import IMAGE_EXTENSIONS
     paths = [p for p in dataset_dir.rglob("*") if p.is_file() and p.suffix.lower() in IMAGE_EXTENSIONS]
-    
+
     if not paths:
         console.print("[yellow]No images found to deduplicate.[/yellow]")
         return
@@ -144,8 +159,7 @@ def tag(
     dataset_dir: Path = typer.Argument(..., help="Path to dataset folder containing .txt captions"),
     trigger_word: Optional[str] = typer.Option(None, "--trigger", "-t", help="Trigger word to prepend (e.g. 'hinata')"),
     character_tags: Optional[str] = typer.Option(None, "--character", "-c", help="Comma-separated character identity tags"),
-    quality_preset: bool = typer.Option(True, "--quality/--no-quality", help="Append Illustrious quality tags"),
-    remove_underscores: bool = typer.Option(True, "--spaces/--underscores", help="Convert tags with underscores to spaces")
+    quality_preset: bool = typer.Option(True, "--quality/--no-quality", help="Append Illustrious quality tags")
 ):
     """Batch clean, normalize, and engineer Danbooru tags for Illustrious."""
     console.print(BANNER)
@@ -177,6 +191,25 @@ def tag(
 
     console.print(f"[bold green]✓ Successfully normalized and updated {updated} caption files![/bold green]")
 
+@app.command(name="autotag")
+def autotag_cmd(
+    dataset_dir: Path = typer.Argument(..., help="Path to image dataset folder"),
+    trigger_word: Optional[str] = typer.Option(None, "--trigger", "-t", help="Trigger word to prepend"),
+    character_tags: Optional[str] = typer.Option(None, "--character", "-c", help="Character identity tags"),
+    threshold: float = typer.Option(0.35, "--threshold", "-th", help="Tag confidence threshold"),
+    quality: bool = typer.Option(True, "--quality/--no-quality", help="Append Illustrious quality tags")
+):
+    """Automatically generate Danbooru caption tags for images using the WD14 Vision Tagger."""
+    console.print(BANNER)
+    count = autotag_pipeline(
+        dataset_dir=dataset_dir,
+        trigger_word=trigger_word,
+        character_tags=character_tags,
+        threshold=threshold,
+        quality=quality
+    )
+    console.print(f"[bold green]✓ Successfully generated captions for {count} images![/bold green]")
+
 @app.command()
 def crop(
     dataset_dir: Path = typer.Argument(..., help="Path to image dataset folder"),
@@ -185,35 +218,27 @@ def crop(
 ):
     """Smart-crop images to their closest SDXL / Illustrious aspect ratio bucket."""
     console.print(BANNER)
-    from .analyzer import IMAGE_EXTENSIONS
-    paths = [p for p in dataset_dir.rglob("*") if p.is_file() and p.suffix.lower() in IMAGE_EXTENSIONS]
+    count = crop_pipeline(dataset_dir=dataset_dir, output_dir=output_dir, face_detect=face_detect)
+    console.print(f"[bold green]✓ Cropped {count} images into '{output_dir}'.[/bold green]")
 
-    if not paths:
-        console.print("[yellow]No images found to crop.[/yellow]")
-        return
-
-    output_dir.mkdir(parents=True, exist_ok=True)
-    success_count = 0
-
-    with Progress(console=console) as progress:
-        task = progress.add_task("Smart cropping images...", total=len(paths))
-        for p in paths:
-            # Determine best bucket
-            from PIL import Image
-            with Image.open(p) as img:
-                w, h = img.size
-            bucket = find_best_bucket(w, h, ILLUSTRIOUS_SDXL_BUCKETS)
-            out_file = output_dir / p.name
-            if smart_crop_and_resize(p, bucket, out_file, use_face_detection=face_detect):
-                # Copy caption txt if exists
-                txt_pair = p.with_suffix(".txt")
-                if txt_pair.exists():
-                    out_txt = output_dir / txt_pair.name
-                    out_txt.write_text(txt_pair.read_text(encoding="utf-8"), encoding="utf-8")
-                success_count += 1
-            progress.update(task, advance=1)
-
-    console.print(f"[bold green]✓ Cropped {success_count}/{len(paths)} images into '{output_dir}'.[/bold green]")
+@app.command(name="clean-watermarks")
+def clean_watermarks_cmd(
+    dataset_dir: Path = typer.Argument(..., help="Path to image dataset folder"),
+    output_dir: Path = typer.Option(..., "--output", "-o", help="Target output folder"),
+    region: str = typer.Option("corners", "--region", "-r", help="Region to scan: corners, bottom-right, bottom, all-margins"),
+    method: str = typer.Option("telea", "--method", "-m", help="Inpainting algorithm: telea or ns"),
+    trim_borders: bool = typer.Option(True, "--trim-borders/--no-trim-borders", help="Auto-trim solid letterbox/banner bars")
+):
+    """Scan and remove watermarks, signatures, logos, and letterbox bars using all CPU cores."""
+    console.print(BANNER)
+    count = clean_watermarks_pipeline(
+        dataset_dir=dataset_dir,
+        output_dir=output_dir,
+        region=region,
+        method=method,
+        trim_borders=trim_borders
+    )
+    console.print(f"[bold green]✓ Cleaned {count} images into '{output_dir}'.[/bold green]")
 
 @app.command()
 def prepare(
@@ -222,67 +247,28 @@ def prepare(
     concept: str = typer.Option(..., "--concept", "-c", help="Concept / Character name (e.g. 'makima')"),
     repeats: int = typer.Option(10, "--repeats", "-r", help="Kohya folder repeats count (default: 10)"),
     trigger_word: Optional[str] = typer.Option(None, "--trigger", "-t", help="Trigger word to prepend"),
-    dedupe_check: bool = typer.Option(True, "--dedupe/--no-dedupe", help="Filter duplicates before processing")
+    dedupe_check: bool = typer.Option(True, "--dedupe/--no-dedupe", help="Filter duplicates before processing"),
+    watermark_clean: bool = typer.Option(False, "--watermark-clean/--no-watermark-clean", help="Auto-inpaint corner watermarks & signatures"),
+    autotag: bool = typer.Option(True, "--autotag/--no-autotag", help="Auto-generate Danbooru tags using WD14 vision model if captions missing"),
+    tag_threshold: float = typer.Option(0.35, "--threshold", "-th", help="Vision tagger confidence threshold")
 ):
-    """End-to-End Pipeline: Analyze -> Dedupe -> Smart Crop -> Tag Clean -> Export Kohya structure."""
+    """End-to-End Pipeline: Analyze -> Dedupe -> Watermark Inpaint -> Smart Crop -> Vision Tag / Clean -> Export Kohya structure."""
     console.print(BANNER)
     console.print(f"[bold cyan]Starting End-to-End Preparation for '{concept}' ({repeats} repeats)...[/bold cyan]")
-
-    temp_crop_dir = output_dir / "_temp_cropped"
-    temp_crop_dir.mkdir(parents=True, exist_ok=True)
-
-    # 1. Dedupe if requested
-    from .analyzer import IMAGE_EXTENSIONS
-    paths = [p for p in dataset_dir.rglob("*") if p.is_file() and p.suffix.lower() in IMAGE_EXTENSIONS]
-    if dedupe_check:
-        console.print(f"Checking {len(paths)} images for duplicates...")
-        dupes = find_duplicates(paths, max_distance=4)
-        if dupes:
-            console.print(f"[yellow]Found {len(dupes)} duplicates. Skipping duplicates in pipeline...[/yellow]")
-            dupe_paths = {d.duplicate for d in dupes}
-            paths = [p for p in paths if p not in dupe_paths]
-
-    # 2. Smart crop
-    console.print(f"Smart cropping {len(paths)} images to SDXL Illustrious buckets...")
-    for p in paths:
-        from PIL import Image
-        with Image.open(p) as img:
-            w, h = img.size
-        bucket = find_best_bucket(w, h, ILLUSTRIOUS_SDXL_BUCKETS)
-        out_file = temp_crop_dir / p.name
-        smart_crop_and_resize(p, bucket, out_file, use_face_detection=True)
-
-        txt_pair = p.with_suffix(".txt")
-        if txt_pair.exists():
-            (temp_crop_dir / txt_pair.name).write_text(txt_pair.read_text(encoding="utf-8"), encoding="utf-8")
-
-    # 3. Clean tags
-    console.print("Normalizing tags with Illustrious standard quality tags...")
-    profile = get_profile(ModelDialect.ILLUSTRIOUS)
-    for txt_file in temp_crop_dir.glob("*.txt"):
-        content = txt_file.read_text(encoding="utf-8")
-        tags = parse_caption_text(content)
-        res = process_tags(
-            tags=tags,
-            trigger_word=trigger_word or concept,
-            quality_tags=profile.quality_tags,
-            banned_tags=profile.banned_tags
-        )
-        txt_file.write_text(res.final_caption, encoding="utf-8")
-
-    # 4. Export Kohya format
-    final_dir = export_kohya_structure(temp_crop_dir, output_dir, repeats, concept)
-    # Also generate metadata.jsonl
-    export_metadata_jsonl(final_dir, final_dir / "metadata.jsonl")
-
-    # Cleanup temp
-    import shutil
-    shutil.rmtree(temp_crop_dir, ignore_errors=True)
-
+    final_dir = prepare_pipeline(
+        dataset_dir=dataset_dir,
+        output_dir=output_dir,
+        concept=concept,
+        repeats=repeats,
+        trigger_word=trigger_word,
+        dedupe_check=dedupe_check,
+        watermark_clean=watermark_clean,
+        autotag=autotag,
+        tag_threshold=tag_threshold
+    )
     console.print(Panel(
         f"[bold green]✓ Pipeline Complete![/bold green]\n"
         f"[bold]Output Directory:[/bold] {final_dir}\n"
-        f"[bold]Images Processed:[/bold] {len(paths)}\n"
         f"[bold]Format:[/bold] Kohya-ss ({repeats}_{concept}) + metadata.jsonl",
         title="Success",
         border_style="green"

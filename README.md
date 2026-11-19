@@ -5,7 +5,7 @@
 [![Model Dialect](https://img.shields.io/badge/Model%20Dialect-Illustrious%20(SDXL)-orange.svg)](https://civitai.com/)
 [![CI](https://github.com/Deepakraj889/dataset-forge/actions/workflows/ci.yml/badge.svg)](https://github.com/Deepakraj889/dataset-forge/actions)
 
-> **High-performance dataset curation, smart aspect-ratio bucketing, and Danbooru tag engineering for SDXL & Illustrious diffusion training.**
+> **High-performance dataset curation, smart aspect-ratio bucketing, resolution-adaptive watermark removal, and vision auto-tagging for SDXL & Illustrious diffusion training.**
 
 ---
 
@@ -14,61 +14,62 @@
 Curating high-quality datasets for **Illustrious (SDXL)** and LoRA fine-tuning is traditionally painful and error-prone:
 * Arbitrary resizing distorts aspect ratios or introduces latent artifacts.
 * Naive center-crops slice off heads, hair, or essential character accessories.
+* Artist signatures, timestamps, and watermarks pollute training weights.
+* Missing or unformatted captions require bouncing across multiple separate tools.
 * Near-duplicate images (burst shots, slight angle shifts) trigger severe model overfitting.
-* Raw Danbooru tags contain noisy watermarks, unescaped syntax, and inconsistent tag hierarchies.
 
-**DatasetForge** solves this with an end-to-end, automated pipeline engineered specifically for the 1024px latent geometry and tag dialect of **Illustrious (SDXL)**.
+**DatasetForge** solves this with an end-to-end, multi-core automated pipeline engineered specifically for the 1024px latent geometry and tag dialect of **Illustrious (SDXL)**.
 
 ```
-Raw Images + Captions
-         │
-         ▼
- ┌───────────────┐
- │ Deduplication │ ──► Perceptual pHash (prunes burst & identical shots)
- └───────┬───────┘
-         │
-         ▼
- ┌───────────────┐
- │ Quality Check │ ──► Laplacian variance blur filter & dynamic range check
- └───────┬───────┘
-         │
-         ▼
- ┌───────────────┐
- │ Smart Cropping│ ──► Face & subject-aware focal cropping into SDXL buckets
- └───────┬───────┘
-         │
-         ▼
- ┌───────────────┐
- │ Tag Engineer  │ ──► Danbooru normalization, trigger injection & quality tags
- └───────┬───────┘
-         │
-         ▼
- ┌───────────────┐
- │ Kohya Export  │ ──► Ready-to-train {repeats}_{concept}/ + metadata.jsonl
- └───────────────┘
+Raw Images (Un-captioned & Watermarked)
+                   │
+                   ▼
+       ┌───────────────────────┐
+       │ Perceptual Deduplication │ ──► pHash Hamming screening (prunes burst shots)
+       └───────────┬───────────┘
+                   │
+                   ▼
+       ┌───────────────────────┐
+       │ Watermark Inpainting  │ ──► Resolution-adaptive Telea/Navier-Stokes inpainting
+       └───────────┬───────────┘
+                   │
+                   ▼
+       ┌───────────────────────┐
+       │ Smart Aspect Cropping │ ──► Face & subject-aware focal cropping into SDXL buckets
+       └───────────┬───────────┘
+                   │
+                   ▼
+       ┌───────────────────────┐
+       │   WD14 Vision Tagger  │ ──► On-demand ConvNeXt auto-captioning + Illustrious ordering
+       └───────────┬───────────┘
+                   │
+                   ▼
+       ┌───────────────────────┐
+       │ Kohya LoRA Export     │ ──► Ready-to-train {repeats}_{concept}/ + metadata.jsonl
+       └───────────────────────┘
 ```
 
 ---
 
 ## ✨ Features
 
-- **🎯 Exact SDXL 1024 Bucketing**: Pre-configured with the standard SDXL / Illustrious aspect ratio buckets (1:1, 9:7, 7:9, 3:2, 2:3, 16:9, 9:16, 21:9) strictly divisible by 64 to prevent VAE shape mismatch errors.
-- **👁️ Face & Subject-Aware Smart Crop**: Automatically identifies face and anatomical focus points to ensure portraits preserve full head, hair, and torso composition during cropping.
+- **🚀 Multi-Core CPU Parallelism**: Dynamically scales across all available hardware threads (e.g. 8, 12, 24, 64 cores) using process pools to churn through 4K datasets in seconds.
+- **🏷️ Automated WD14 Vision Tagger**: Reads raw image pixels using the gold-standard ConvNeXt WD14 model to generate Danbooru tags. Models are downloaded on-demand into local cache, keeping the repository light and zero-bloat.
+- **🩹 Resolution-Adaptive Watermark Inpainter**: Automatically detects and seamlessly inpaints artist signatures, timestamps, and logos, and trims solid letterbox bars.
+- **🎯 Exact SDXL 1024 Bucketing**: Pre-configured with the standard SDXL / Illustrious aspect ratio buckets (1:1, 9:7, 7:9, 3:2, 2:3, 16:9, 9:16, 21:9) strictly divisible by 64.
+- **👁️ Face & Subject-Aware Smart Crop**: Automatically identifies face bounding boxes to ensure portraits preserve full head, hair, and torso composition during cropping.
 - **🔍 Perceptual Deduplication (`pHash`)**: Computes 64-bit perceptual hashes to detect identical images, crop duplicates, and burst shots using customizable Hamming distance thresholds.
-- **🔬 Blur & Artifact Screening**: Uses OpenCV Laplacian variance scoring to flag low-resolution or blurry source images before they pollute training weights.
 - **🏷️ Illustrious Tag Engineering**:
   - Automatically converts Danbooru underscores to natural spaces (`black_hair` ➔ `black hair`).
-  - Cleans escaped syntax (`\(medium\)` ➔ `(medium)`).
-  - Pre-pends unique concept trigger words and character identifiers.
+  - Guarantees concept trigger words are placed first (`leafa, 1girl, ...`).
   - Automatically appends Illustrious aesthetic tags (`masterpiece, best quality, very aesthetic, absurdres`).
   - Strips watermarks, artist signatures, and low-quality prompt noise.
-- **🚀 One-Command Kohya Export**: Organizes prepared datasets into the canonical `10_concept/` folder convention alongside Hugging Face / Kohya `metadata.jsonl`.
+- **📦 One-Command Kohya Export**: Organizes prepared datasets into canonical `{repeats}_{concept}/` folders alongside Hugging Face / Kohya `metadata.jsonl`.
 
 ---
 
 ## 📦 Installation
 
-### From Source
 ```bash
 git clone https://github.com/Deepakraj889/dataset-forge.git
 cd dataset-forge
@@ -80,33 +81,33 @@ pip install -e .
 ## ⚡ Quickstart
 
 ### 1. Run the Full End-to-End Pipeline
-Prepare a raw folder of images and text files into a ready-to-train Kohya LoRA dataset in one command:
+Takes raw, un-captioned, watermarked images and produces a ready-to-train Kohya folder in one command:
 ```bash
-dataset-forge prepare path/to/raw_images --output ./training_dir --concept makima --repeats 10 --trigger "makima_csm"
+dataset-forge prepare "path/to/raw_images" --output "./training_dir" --concept leafa --repeats 10 --trigger "leafa" --watermark-clean
 ```
 
-### 2. Analyze Dataset Quality & Blur
-Inspect resolutions, aspect ratios, and blur metrics across your dataset:
+### 2. Auto-Tag Images with WD14 Vision Tagger
+Automatically generate Danbooru captions from raw pixels:
 ```bash
-dataset-forge analyze path/to/dataset --dialect illustrious
+dataset-forge autotag "path/to/images" --trigger "leafa" --threshold 0.35
 ```
 
-### 3. Scan & Quarantine Near-Duplicates
-Find near-duplicate images with Hamming distance $\le 5$ and optionally isolate them:
+### 3. Clean Watermarks & Signatures
+Inpaint corner signatures, logos, or banner strips:
 ```bash
-dataset-forge dedupe path/to/dataset --threshold 5 --quarantine ./duplicates_bin
+dataset-forge clean-watermarks "path/to/images" --output "./cleaned_images" --region corners
 ```
 
 ### 4. Smart-Crop to SDXL Buckets
 Crop and resize images to their ideal SDXL 1024 aspect ratio bucket with face-aware centering:
 ```bash
-dataset-forge crop path/to/dataset --output ./cropped_dataset --face-detect
+dataset-forge crop "path/to/images" --output "./cropped_dataset" --face-detect
 ```
 
-### 5. Normalize & Clean Danbooru Tags
-Batch process all `.txt` caption files in your dataset:
+### 5. Scan & Quarantine Near-Duplicates
+Find near-duplicate images and optionally isolate them:
 ```bash
-dataset-forge tag path/to/dataset --trigger "hinata" --character "hyuuga hinata" --quality
+dataset-forge dedupe "path/to/images" --threshold 5 --quarantine "./duplicates_bin"
 ```
 
 ---
@@ -123,15 +124,6 @@ dataset-forge tag path/to/dataset --trigger "hinata" --character "hyuuga hinata"
 | **16:9** | `1344 x 768` | Wide | Cinematic banners |
 | **9:16** | `768 x 1344` | Tall | Full vertical splash art |
 | **21:9** | `1536 x 640` | Ultra-Wide | Panoramic / multi-subject |
-
----
-
-## 🗺️ Roadmap
-
-- [x] **v0.1.0**: Illustrious (SDXL) dialect profile, smart bucketing, face-aware crop, pHash deduplication, Kohya export.
-- [ ] **v0.2.0**: **Pony Diffusion** dialect profile (`score_9, score_8_up...` score tag ranking).
-- [ ] **v0.3.0**: **Flux.1** natural language caption generator & resolution bucketing.
-- [ ] **v0.4.0**: Interactive Web UI (FastAPI preview dashboard) for one-click manual approval of borderline crops.
 
 ---
 
