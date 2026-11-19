@@ -45,7 +45,7 @@ Raw Images (Un-captioned & Watermarked)
                    │
                    ▼
        ┌───────────────────────┐
-       │ Kohya LoRA Export     │ ──► Ready-to-train {repeats}_{concept}/ + metadata.jsonl
+       │ Standard LoRA Export  │ ──► Ready-to-train {repeats}_{concept}/ + metadata.jsonl
        └───────────────────────┘
 ```
 
@@ -64,7 +64,7 @@ Raw Images (Un-captioned & Watermarked)
   - Guarantees concept trigger words are placed first (`leafa, 1girl, ...`).
   - Automatically appends Illustrious aesthetic tags (`masterpiece, best quality, very aesthetic, absurdres`).
   - Strips watermarks, artist signatures, and low-quality prompt noise.
-- **📦 One-Command Kohya Export**: Organizes prepared datasets into canonical `{repeats}_{concept}/` folders alongside Hugging Face / Kohya `metadata.jsonl`.
+- **📦 One-Command Standard Export**: Organizes prepared datasets into canonical `{repeats}_{concept}/` folders alongside standard `metadata.jsonl` (compatible with Kohya-ss, SimpleTuner, and other LoRA trainers).
 
 ---
 
@@ -81,7 +81,7 @@ pip install -e .
 ## ⚡ Quickstart
 
 ### 1. Run the Full End-to-End Pipeline
-Takes raw, un-captioned, watermarked images and produces a ready-to-train Kohya folder in one command:
+Takes raw, un-captioned, watermarked images and produces a ready-to-train LoRA dataset in one command:
 ```bash
 dataset-forge prepare "path/to/raw_images" --output "./training_dir" --concept leafa --repeats 10 --trigger "leafa" --watermark-clean
 ```

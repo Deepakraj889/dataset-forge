@@ -281,7 +281,7 @@ def run_interactive_shell():
                 console.print(Panel(
                     f"[bold green]✓ Pipeline Complete![/bold green]\n"
                     f"[bold]Output Directory:[/bold] {final_dir}\n"
-                    f"[bold]Format:[/bold] Kohya-ss ({state.repeats}_{state.concept}) + metadata.jsonl",
+                    f"[bold]Format:[/bold] Standard LoRA ({state.repeats}_{state.concept}) + metadata.jsonl",
                     title="Success",
                     border_style="green"
                 ))

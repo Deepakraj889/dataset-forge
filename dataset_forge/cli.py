@@ -245,14 +245,14 @@ def prepare(
     dataset_dir: Path = typer.Argument(..., help="Raw dataset folder"),
     output_dir: Path = typer.Option(..., "--output", "-o", help="Final destination folder"),
     concept: str = typer.Option(..., "--concept", "-c", help="Concept / Character name (e.g. 'makima')"),
-    repeats: int = typer.Option(10, "--repeats", "-r", help="Kohya folder repeats count (default: 10)"),
+    repeats: int = typer.Option(10, "--repeats", "-r", help="Training folder repeats count (default: 10)"),
     trigger_word: Optional[str] = typer.Option(None, "--trigger", "-t", help="Trigger word to prepend"),
     dedupe_check: bool = typer.Option(True, "--dedupe/--no-dedupe", help="Filter duplicates before processing"),
     watermark_clean: bool = typer.Option(False, "--watermark-clean/--no-watermark-clean", help="Auto-inpaint corner watermarks & signatures"),
     autotag: bool = typer.Option(True, "--autotag/--no-autotag", help="Auto-generate Danbooru tags using WD14 vision model if captions missing"),
     tag_threshold: float = typer.Option(0.35, "--threshold", "-th", help="Vision tagger confidence threshold")
 ):
-    """End-to-End Pipeline: Analyze -> Dedupe -> Watermark Inpaint -> Smart Crop -> Vision Tag / Clean -> Export Kohya structure."""
+    """End-to-End Pipeline: Analyze -> Dedupe -> Watermark Inpaint -> Smart Crop -> Vision Tag / Clean -> Export standard LoRA structure."""
     console.print(BANNER)
     console.print(f"[bold cyan]Starting End-to-End Preparation for '{concept}' ({repeats} repeats)...[/bold cyan]")
     final_dir = prepare_pipeline(
@@ -269,7 +269,7 @@ def prepare(
     console.print(Panel(
         f"[bold green]✓ Pipeline Complete![/bold green]\n"
         f"[bold]Output Directory:[/bold] {final_dir}\n"
-        f"[bold]Format:[/bold] Kohya-ss ({repeats}_{concept}) + metadata.jsonl",
+        f"[bold]Format:[/bold] Standard LoRA ({repeats}_{concept}) + metadata.jsonl",
         title="Success",
         border_style="green"
     ))

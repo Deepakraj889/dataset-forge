@@ -15,7 +15,7 @@ from .deduper import find_duplicates
 from .cropper import crop_worker
 from .bucketer import find_best_bucket
 from .tagger import process_tags, parse_caption_text
-from .exporter import export_kohya_structure, export_metadata_jsonl
+from .exporter import export_lora_structure, export_metadata_jsonl
 from .watermark import clean_watermark_worker
 from .vision_tagger import WD14Tagger
 
@@ -220,7 +220,7 @@ def prepare_pipeline(
             )
             txt_file.write_text(res.final_caption, encoding="utf-8")
 
-    final_dir = export_kohya_structure(temp_crop_dir, output_dir, repeats, concept)
+    final_dir = export_lora_structure(temp_crop_dir, output_dir, repeats, concept)
     export_metadata_jsonl(final_dir, final_dir / "metadata.jsonl")
 
     shutil.rmtree(temp_crop_dir, ignore_errors=True)

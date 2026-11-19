@@ -5,13 +5,13 @@ from typing import List, Dict, Optional
 from .models import ImageQualityReport
 from .analyzer import IMAGE_EXTENSIONS
 
-def export_kohya_structure(
+def export_lora_structure(
     source_dir: Path,
     output_dir: Path,
     repeats: int,
     concept_name: str
 ) -> Path:
-    """Exports dataset into canonical Kohya-ss folder naming: {repeats}_{concept_name}."""
+    """Exports dataset into canonical LoRA folder naming: {repeats}_{concept_name}."""
     target_folder = output_dir / f"{repeats}_{concept_name}"
     target_folder.mkdir(parents=True, exist_ok=True)
 
@@ -30,7 +30,7 @@ def export_metadata_jsonl(
     source_dir: Path,
     output_file: Path
 ) -> int:
-    """Exports image-caption pairs into HuggingFace/Kohya metadata.jsonl format."""
+    """Exports image-caption pairs into standard metadata.jsonl format (HuggingFace compatible)."""
     records = []
     for p in source_dir.iterdir():
         if p.is_file() and p.suffix.lower() in IMAGE_EXTENSIONS:
