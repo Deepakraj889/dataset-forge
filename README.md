@@ -70,11 +70,47 @@ Raw Images (Un-captioned & Watermarked)
 
 ## 📦 Installation
 
+**Requirements:** Python 3.10–3.13 · any OS · **no GPU needed** (CPU-only inference)
+
+| What | Disk | Time |
+| :--- | :--- | :--- |
+| `pip install` (deps + package) | ~500 MB | ~90 s |
+| WD14 tagger model (first `autotag`/`prepare` run only) | ~371 MB | one-time download |
+
+### Recommended: isolated install
+
+```bash
+pipx install git+https://github.com/Deepakraj889/dataset-forge.git
+```
+
+Or with a virtual environment:
+
+```bash
+python -m venv .venv
+# Windows:  .venv\Scripts\activate
+# macOS/Linux:  source .venv/bin/activate
+pip install git+https://github.com/Deepakraj889/dataset-forge.git
+```
+
+### Verify it works (do this before anything else)
+
+```bash
+dataset-forge --help
+```
+
+You should see the `⚡ DatasetForge` banner and a command list. If you don't, see [Troubleshooting](#-troubleshooting).
+
+### For development
+
 ```bash
 git clone https://github.com/Deepakraj889/dataset-forge.git
 cd dataset-forge
-pip install -e .
+pip install -e ".[dev]"
+pytest -v
 ```
+
+> **Not on PyPI yet.** `pip install dataset-forge` will fail — use the `git+https://` form above.
+> The WD14 ConvNeXt tagger (~371 MB) downloads to `~/.cache/dataset_forge/` on first use and needs network access once; everything after that is fully offline.
 
 ---
 
@@ -124,6 +160,43 @@ dataset-forge dedupe "path/to/images" --threshold 5 --quarantine "./duplicates_b
 | **16:9** | `1344 x 768` | Wide | Cinematic banners |
 | **9:16** | `768 x 1344` | Tall | Full vertical splash art |
 | **21:9** | `1536 x 640` | Ultra-Wide | Panoramic / multi-subject |
+
+---
+
+## 🚫 What it does *not* do
+
+Being explicit so you don't waste a run:
+
+- **No training.** It prepares datasets; it does not train LoRAs. Pipe the output into Kohya-ss, SimpleTuner, or your trainer of choice.
+- **No scraping.** You supply the images.
+- **No caption rewriting by an LLM.** Tags come from WD14 (Danbooru vocabulary) plus rule-based Illustrious ordering.
+- **Watermark removal is inpainting, not magic.** Corner/banner signatures are handled well; a watermark across a face is not recoverable.
+- **Face-aware crop is a face detector, not a subject-aware segmenter.** It keeps heads in frame; it won't understand multi-character compositions.
+
+---
+
+## 🔧 Troubleshooting
+
+**`dataset-forge: command not found` / `not recognized` (Windows)**
+The console script landed in a `Scripts` folder that isn't on `PATH`.
+Use `pipx install ...` (handles this) or add the folder:
+`%APPDATA%\Python\Python3XX\Scripts`.
+
+**`UnicodeEncodeError: 'charmap' codec can't encode character`**
+Fixed in 0.1.1 — the CLI now switches the console to UTF-8 and falls back to
+`errors="replace"`. If you still see it, you are on an older install: reinstall.
+
+**`ModuleNotFoundError: No module named 'dataset_forge'`**
+You activated the venv after installing, or installed with a different interpreter.
+Re-run the install with the venv active.
+
+**Tagger downloads stall behind a proxy**
+Set `HTTPS_PROXY` before the run, or pre-place `model.onnx` and `selected_tags.csv`
+into `~/.cache/dataset_forge/models/wd-v1-4-convnext-tagger-v2/`.
+
+**`onnxruntime` fails to import on an old CPU**
+That CPU predates AVX2. Use a machine with AVX2, or run `analyze` / `crop` /
+`dedupe` / `clean-watermarks` (which don't need onnxruntime) and skip `autotag`.
 
 ---
 
