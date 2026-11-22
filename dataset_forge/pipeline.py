@@ -151,7 +151,7 @@ def prepare_pipeline(
             paths = [p for p in paths if p not in dupe_paths]
 
     working_paths = paths
-    workers = min(len(paths), os.cpu_count() or 4)
+    workers = min(len(paths), os.cpu_count() or 4) or 1
 
     if watermark_clean:
         wm_tasks = [(p, temp_crop_dir / f"_wm_{p.name}", "corners", True, "telea", None) for p in paths]
