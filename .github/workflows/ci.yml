@@ -29,3 +29,31 @@ jobs:
     - name: Run Pytest
       run: |
         pytest -v
+
+  # The primary audience runs Windows. A legacy-code-page console used to crash
+  # every single command with UnicodeEncodeError; this leg cannot be dropped.
+  windows-install:
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+
+    - name: Install
+      run: |
+        python -m pip install --upgrade pip
+        pip install .[dev]
+
+    - name: Entry point must run on a cp1252 console
+      shell: pwsh
+      run: |
+        dataset-forge --help
+        if ($LASTEXITCODE -ne 0) { exit 1 }
+        cmd /c "chcp 437 >nul && dataset-forge --help"
+        if ($LASTEXITCODE -ne 0) { exit 1 }
+
+    - name: Run Pytest
+      run: pytest -v

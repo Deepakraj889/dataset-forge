@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "dataset-forge"
-version = "0.1.0"
+version = "0.1.1"
 description = "Production-grade dataset curation, smart bucketing, and tag engineering for SDXL & Illustrious diffusion training."
 readme = "README.md"
 license = "MIT"
